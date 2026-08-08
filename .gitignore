@@ -1,0 +1,9 @@
+build/
+bin/
+lib/
+*.o
+*.a
+__pycache__/
+*.pyc
+.vscode/
+build-wsl/

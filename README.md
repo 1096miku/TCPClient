@@ -1,0 +1,78 @@
+# TCP Chat Client (tcp_chat_client)
+
+基于单线程 poll() 事件循环的纯 C 语言 TCP 聊天客户端（学习项目），配套聊天服务器 [TCPServer](https://github.com/1096miku/TCPServer)。
+
+> 学习项目：核心目的是理解 poll、TCP 流协议、单线程事件循环。协议与服务器完全兼容，服务器零改动。
+
+## 功能特性
+
+- 登录（用户名 + 密码，失败同一连接重试）
+- 大厅聊天（广播 + 自身回显）
+- 在线用户列表显示
+- /help /quit /login 命令
+
+**M2+ 规划**：私聊 + 离线消息、群组（创建/加入/离开/群聊）、文件传输（/sendfile /accept /reject）、（可选）ncurses TUI。
+
+## 架构概览
+
+```
+main ──> app(poll 事件循环) ──> conn(连接/发送)
+   │        │  ├─ protocol(帧编解码)     ui(输出层，可换 ncurses)
+   │        │  └─ commands(命令/裸文本)  utils(工具)
+   └────────┴───────── 单线程，无锁
+```
+
+## 快速开始
+
+依赖：Linux/WSL、CMake ≥ 3.10、C11 编译器。
+
+```bash
+cmake -B build-wsl -DCMAKE_BUILD_TYPE=Release
+cmake --build build-wsl
+```
+
+产物：`bin/tcp_client`。
+
+## 运行
+
+```bash
+./bin/tcp_client <host> [port]
+# port 可选，默认 18080
+```
+
+示例（服务器运行在 `./bin/chat_server 18080 data/passwd.txt`）：
+
+```bash
+./bin/tcp_client 127.0.0.1 18080
+```
+
+## 通信协议
+
+大端二进制帧：`Magic(2B 0xCAFE) + type(1B) + len(2B) + payload`，详见 `include/protocol.h`。共 17 种消息类型（0x01-0x0E C→S，0x0F-0x11 S→C），完整定义与 TCPServer 一致。
+
+## 测试
+
+```bash
+cd build-wsl && ctest --output-on-failure   # 编解码单元测试
+```
+
+手工端到端（WSL 三终端）：终端 1 起服务器，终端 2/3 起客户端，验证登录、大厅广播、优雅退出（见 `docs/adr/` 与 CONTEXT.md）。
+
+## 项目结构
+
+```
+include/  头文件（utils.h/protocol.h 与服务器逐字节一致）
+src/      实现（protocol.c 手写镜像；utils.c 复制）
+tests/    ctest 单元测试
+docs/adr/ 架构决策记录（中文）
+```
+
+## 文档
+
+- `claude.md` 开发文档与硬规则
+- `CONTEXT.md` 领域词汇表（共享语言）
+- `docs/adr/` 架构决策记录
+
+## 许可
+
+学习用途。
