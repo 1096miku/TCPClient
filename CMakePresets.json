@@ -1,0 +1,36 @@
+{
+  "version": 2,
+  "cmakeMinimumRequired": { "major": 3, "minor": 21, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "wsl-release",
+      "displayName": "WSL build (Ninja, Release)",
+      "description": "Default build: Ninja generator, Release, output to build-ninja/",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-ninja",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "wsl-debug",
+      "displayName": "WSL build (Ninja, Debug)",
+      "description": "Debug build with -DDEBUG logging enabled",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-ninja-debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "wsl-release",
+      "configurePreset": "wsl-release"
+    },
+    {
+      "name": "wsl-debug",
+      "configurePreset": "wsl-debug"
+    }
+  ]
+}

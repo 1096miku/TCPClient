@@ -40,6 +40,8 @@ TCPClient/
 
 ## 注意事项
 - 构建/测试/运行一律在 WSL（`cd /mnt/d/AAA_Game_XueXiBan/ShareUbuntu/CC/TCPClient`）
+- **构建默认用 Ninja 生成器**（CMakePresets.json，人和 Claude 统一走同一命令）：
+  `cmake --preset wsl-release && cmake --build --preset wsl-release`（产物 `build-ninja/`，Release）；调试用 `--preset wsl-debug`（`build-ninja-debug/`，含 DEBUG 日志）；测试 `ctest --test-dir build-ninja --output-on-failure`。不要用 `cmake -B build-wsl` 默认生成器
 - **不主动 git init / git commit / git push**，由用户触发；commit message 用简洁中文
 - 协议以 TCPServer 为唯一权威来源（源码优先）；改协议先改服务器再改客户端
 - include/utils.h、include/protocol.h、src/utils.c 与服务器保持逐字节一致（可 diff），改动需在提交说明中注明有意偏离

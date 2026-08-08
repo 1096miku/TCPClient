@@ -27,9 +27,11 @@ main ──> app(poll 事件循环) ──> conn(连接/发送)
 依赖：Linux/WSL、CMake ≥ 3.10、C11 编译器。
 
 ```bash
-cmake -B build-wsl -DCMAKE_BUILD_TYPE=Release
-cmake --build build-wsl
+cmake --preset wsl-release            # 配置（Ninja + Release，产物目录 build-ninja/）
+cmake --build --preset wsl-release    # 构建
 ```
+
+调试构建（含 DEBUG 日志）：`cmake --preset wsl-debug && cmake --build --preset wsl-debug`（`build-ninja-debug/`）。
 
 产物：`bin/tcp_client`。
 
@@ -53,7 +55,7 @@ cmake --build build-wsl
 ## 测试
 
 ```bash
-cd build-wsl && ctest --output-on-failure   # 编解码单元测试
+ctest --test-dir build-ninja --output-on-failure   # 编解码单元测试
 ```
 
 手工端到端（WSL 三终端）：终端 1 起服务器，终端 2/3 起客户端，验证登录、大厅广播、优雅退出（见 `docs/adr/` 与 CONTEXT.md）。

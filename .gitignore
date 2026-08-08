@@ -7,3 +7,6 @@ __pycache__/
 *.pyc
 .vscode/
 build-wsl/
+build-ninja/
+build-ninja-debug/
+.claude/
