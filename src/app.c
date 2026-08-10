@@ -17,6 +17,9 @@
 /* main.c 定义，此处 extern 引用（镜像服务器 main.c/server.c 的关系） */
 extern volatile sig_atomic_t g_running;
 
+/* login_loop 中需要分发同批粘连帧，前向声明（实现见"帧分发"小节） */
+static void app_dispatch(app_t *app);
+
 /* ---------- 登录握手 ---------- */
 
 /**
@@ -139,6 +142,11 @@ static int login_loop(app_t *app)
             app->rbuf_len -= off;
 
             if (outcome == 1) {
+                /* Welcome 与后续帧（离线公告/回放/在线列表/上线公告）可能
+                 * 同批到达——数据已从 socket 读入 rbuf，主循环 poll 只监听
+                 * socket fd，无新数据时永远不会再触发分发，必须在此立即
+                 * 分发剩余帧（否则离线回放/在线列表被吞） */
+                app_dispatch(app);
                 return 0;
             }
             if (outcome == 2) {
@@ -167,6 +175,12 @@ static void app_handle_frame(app_t *app, uint8_t type,
         break;
     case MSG_CHAT:
         /* 服务器已格式化 "发送者: 消息"——含自己的回显，预期行为 */
+        ui_display_incoming((const char *)payload);
+        break;
+    case MSG_PRIV:
+        /* 服务器已格式化三种形态（chat.c:38-63 / auth.c:64-70）：
+         * 目标收 "发送者 (private): 消息"、发送方收 "To 目标: 消息" 回声、
+         * 离线回放 "发送者 (offline): 消息"，全部原样打印 */
         ui_display_incoming((const char *)payload);
         break;
     case MSG_ERROR:

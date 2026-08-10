@@ -42,3 +42,16 @@ target_include_directories(test_protocol PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 add_test(NAME test_protocol COMMAND test_protocol)
+
+add_executable(test_commands
+    tests/test_commands.c
+    src/commands.c
+    src/conn.c
+    src/ui.c
+    src/protocol.c
+    src/utils.c
+)
+target_include_directories(test_commands PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+add_test(NAME test_commands COMMAND test_commands)

@@ -2,7 +2,7 @@
 
 ## 项目概述
 
-学习项目：通过编写聊天服务器（TCPServer，`d:\AAA_Game_XueXiBan\ShareUbuntu\CC\TCPServer`）的配套 C 客户端，学习 C 语言与 Claude Code 开发工作流。当前里程碑 M1：编解码 + 连接 + 登录 + 大厅聊天。规划中：M2 私聊 + 离线消息 + 在线列表；M3 群组；M4 文件传输；M5（可选）ncurses TUI。
+学习项目：通过编写聊天服务器（TCPServer，`d:\AAA_Game_XueXiBan\ShareUbuntu\CC\TCPServer`）的配套 C 客户端，学习 C 语言与 Claude Code 开发工作流。当前里程碑 M2：私聊 + 离线消息 + 在线列表命令（M1 编解码 + 连接 + 登录 + 大厅聊天已完成）。规划中：M3 群组；M4 文件传输；M5（可选）ncurses TUI。
 
 ## 技术栈
 
@@ -33,10 +33,11 @@ TCPClient/
 
 - [x] M0 仓库骨架（CLAUDE.md / CONTEXT.md / ADR-0001 / CI）
 - [x] M1 编解码 + 连接 + 登录 + 大厅聊天（完成）
-- [x] 检查点 A：ctest 全绿（test_protocol 14 用例）
-- [x] 检查点 B：冒烟 e2e 通过（登录重试/Welcome/在线列表/广播回显/上线公告；Ctrl-C 与交互式提示符待手工三终端验证）
+- [x] M2 私聊 + 离线消息 + 在线列表命令（完成：`/priv` `/users`、MSG_PRIV 分发、离线回放）
+- [x] 检查点 A：ctest 全绿（test_protocol 14 用例 + test_commands 6 用例）
+- [x] 检查点 B：M1 冒烟 e2e 通过；M2 冒烟 e2e 通过（在线私聊/回声/错误(200)//users/离线缓存提示/离线回放；Ctrl-C 与交互式提示符待手工三终端验证）
 - 已定决策索引：单线程 poll 见 `docs/adr/0001`；领域术语见 `CONTEXT.md`
-- 待办：git init + 首次 commit（用户触发）；M2 私聊 + 离线消息 + 在线列表命令
+- 待办：git commit（用户触发）；M3 群组（/gcreate /gjoin /gleave + MSG_GMSG 分发，扩展点同 M2：app.c 分发 switch + commands.c 命令分支）
 
 ## 注意事项
 - 构建/测试/运行一律在 WSL（`cd /mnt/d/AAA_Game_XueXiBan/ShareUbuntu/CC/TCPClient`）
@@ -46,6 +47,7 @@ TCPClient/
 - 协议以 TCPServer 为唯一权威来源（源码优先）；改协议先改服务器再改客户端
 - include/utils.h、include/protocol.h、src/utils.c 与服务器保持逐字节一致（可 diff），改动需在提交说明中注明有意偏离
 - 服务器对登录失败**不关连接**——错误帧后同一连接重试；广播回显含发送者本人（预期行为非 bug）
-- **服务器已知 bug（2026-08-08 冒烟验证发现）**：`server_disconnect_client` 广播 "has left the chat" 时经 `client_queue_send` 写入对方 write_buf 但**不写 notify_fd 唤醒主线程**（唤醒只发生在 `server_dispatch_message` 的 cleanup 段），边沿触发下公告永久滞留——对方收不到 has left 公告。客户端行为正确（服务器没发就无法显示），修复在服务器侧（disconnect 广播后 `write(s->notify_fd, &val, sizeof(val))` 或直接 `server_flush_all_writes`）。未修复前 e2e 场景⑥无法通过
+- **服务器已知 bug（2026-08-08 冒烟验证发现，未修）**：`server_disconnect_client` 广播 "has left the chat" 时经 `client_queue_send` 写入对方 write_buf 但**不写 notify_fd 唤醒主线程**（唤醒只发生在 `server_dispatch_message` 的 cleanup 段），边沿触发下公告永久滞留——对方收不到 has left 公告。客户端行为正确（服务器没发就无法显示），修复在服务器侧（disconnect 广播后 `write(s->notify_fd, &val, sizeof(val))` 或直接 `server_flush_all_writes`）。未修复前 e2e 场景⑥无法通过
+- **客户端已修 bug（2026-08-08 M2 冒烟发现）**：登录成功帧（Welcome）与后续帧（离线公告/回放/在线列表/上线公告）同批 recv 粘连到达时，login_loop 消费 Welcome 后 break，剩余帧留在内存 rbuf——主循环 poll 只监听 socket fd，socket 已空则 POLLIN 永不触发，剩余帧被吞。修复：login_loop 成功后立即 `app_dispatch(app)` 分发 rbuf 剩余帧（app.c 登录段）。M1 冒烟时该 bug 被 TCP 分片掩盖（Welcome 与在线列表恰好分批到达）
 - 新会话首条消息需给出计划文件路径（`C:\Users\1\.claude\plans\tcp-c-users-1-claude-plans-cc-1-lvgl9-2-cozy-moler.md`）要求先读再动手
 - 会话结束前实时更新"当前开发状态"

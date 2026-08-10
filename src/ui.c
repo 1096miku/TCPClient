@@ -90,8 +90,10 @@ void ui_prompt(void)
 void ui_print_help(void)
 {
     ui_print("可用命令:");
-    ui_print("  /login          重新登录（换用户名/密码）");
-    ui_print("  /help           显示本帮助");
-    ui_print("  /quit           退出客户端");
-    ui_print("  其他输入        作为大厅聊天消息发送");
+    ui_print("  /priv <用户> <消息>  发送私聊消息");
+    ui_print("  /users              刷新在线用户列表");
+    ui_print("  /login              重新登录（换用户名/密码）");
+    ui_print("  /help               显示本帮助");
+    ui_print("  /quit               退出客户端");
+    ui_print("  其他输入            作为大厅聊天消息发送");
 }

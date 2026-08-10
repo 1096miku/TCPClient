@@ -8,10 +8,12 @@
 
 - 登录（用户名 + 密码，失败同一连接重试）
 - 大厅聊天（广播 + 自身回显）
-- 在线用户列表显示
+- 在线用户列表显示（登录自动 + /users 手动刷新）
+- 私聊（/priv，含发送方回声、错误帧提示）
+- 离线消息（目标离线时缓存，登录后自动回放）
 - /help /quit /login 命令
 
-**M2+ 规划**：私聊 + 离线消息、群组（创建/加入/离开/群聊）、文件传输（/sendfile /accept /reject）、（可选）ncurses TUI。
+**M3+ 规划**：群组（创建/加入/离开/群聊）、文件传输（/sendfile /accept /reject）、（可选）ncurses TUI。
 
 ## 架构概览
 
@@ -55,10 +57,10 @@ cmake --build --preset wsl-release    # 构建
 ## 测试
 
 ```bash
-ctest --test-dir build-ninja --output-on-failure   # 编解码单元测试
+ctest --test-dir build-ninja --output-on-failure   # 编解码 + 命令解析单元测试
 ```
 
-手工端到端（WSL 三终端）：终端 1 起服务器，终端 2/3 起客户端，验证登录、大厅广播、优雅退出（见 `docs/adr/` 与 CONTEXT.md）。
+手工端到端（WSL 三终端）：终端 1 起服务器，终端 2/3 起客户端，验证登录、大厅广播、私聊、离线回放、优雅退出（见 `docs/adr/` 与 CONTEXT.md）。
 
 ## 项目结构
 

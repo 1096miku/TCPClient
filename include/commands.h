@@ -15,13 +15,26 @@
 int commands_login(conn_t *conn);
 
 /**
+ * @brief 切分 /priv 命令参数：target 与 message
+ * @param line      输入行（调用方已确认以 /priv 开头）
+ * @param target    [out] 目标用户名（NUL 结尾）
+ * @param target_sz target 缓冲区大小
+ * @param msg_out   [out] 指向消息文本（跳过 target 与中间空白，内部空格保留）
+ * @return 0 成功；-1 格式错误（缺 target/缺消息/target 超长）
+ * @note target 长度上限 target_sz-1；message 为空视为缺消息；
+ *       纯函数（无 I/O），独立可测
+ */
+int commands_parse_priv(const char *line, char *target, size_t target_sz,
+                        const char **msg_out);
+
+/**
  * @brief 处理一行用户输入
  * @param conn     已建立的连接
  * @param line     去除换行后的输入行（裸文本或 / 命令）
  * @param quit_out [out] 置 true 表示应退出（/quit）
  * @return 0 已处理；-1 致命错误（发送失败，应退出）
- * @note 裸文本 → MSG_CHAT 帧发送；/help /quit /login 命令分发；
- *       未知命令给出提示。M2+ 在此扩展 /priv /users /gcreate 等
+ * @note 裸文本 → MSG_CHAT 帧发送；/help /quit /login /priv /users 命令分发；
+ *       未知命令给出提示。M3+ 在此扩展 /gcreate /gjoin 等
  */
 int commands_handle_line(conn_t *conn, const char *line, bool *quit_out);
 

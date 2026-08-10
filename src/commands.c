@@ -70,6 +70,36 @@ int commands_login(conn_t *conn)
     }
 }
 
+int commands_parse_priv(const char *line, char *target, size_t target_sz,
+                        const char **msg_out)
+{
+    const char *p = line + strlen("/priv");  /* 跳过命令前缀 */
+    while (*p == ' ' || *p == '\t') {
+        p++;
+    }
+    if (*p == '\0') {
+        return -1;  /* 缺 target */
+    }
+    const char *start = p;
+    while (*p != '\0' && *p != ' ' && *p != '\t') {
+        p++;
+    }
+    size_t tlen = (size_t)(p - start);
+    if (tlen == 0 || tlen >= target_sz) {
+        return -1;  /* target 为空或超长（需留 NUL 位） */
+    }
+    memcpy(target, start, tlen);
+    target[tlen] = '\0';
+    while (*p == ' ' || *p == '\t') {
+        p++;
+    }
+    if (*p == '\0') {
+        return -1;  /* 缺消息 */
+    }
+    *msg_out = p;  /* 消息保留内部空格，直接指向行内 */
+    return 0;
+}
+
 int commands_handle_line(conn_t *conn, const char *line, bool *quit_out)
 {
     *quit_out = false;
@@ -91,6 +121,34 @@ int commands_handle_line(conn_t *conn, const char *line, bool *quit_out)
             /* 已登录状态重新登录：发送新凭据，结果异步显示
              * （认证错误帧由主循环显示，不自动重试——重试仅限登录阶段） */
             return commands_login(conn);
+        }
+        if (strncmp(line, "/priv", 5) == 0 &&
+            (line[5] == ' ' || line[5] == '\t' || line[5] == '\0')) {
+            /* /priv <用户名> <消息> → MSG_PRIV 帧（target\0message） */
+            char target[MAX_USERNAME_LEN];
+            const char *msg = NULL;
+            if (commands_parse_priv(line, target, sizeof(target), &msg) < 0) {
+                ui_print("用法: /priv <用户名> <消息>");
+                return 0;
+            }
+            uint8_t frame[PROTO_HEADER_SIZE + MAX_MESSAGE_LEN +
+                          MAX_USERNAME_LEN + 1];
+            int n = protocol_build_text2(MSG_PRIV, target, msg,
+                                         frame, sizeof(frame));
+            if (n < 0) {
+                return -1;
+            }
+            return conn_send_all(conn, frame, n);
+        }
+        if (strcmp(line, "/users") == 0) {
+            /* /users → 零载荷 MSG_USERS 请求，服务器回 MSG_ONLINE_USERS */
+            uint8_t frame[PROTO_HEADER_SIZE];
+            int n = protocol_build_frame(MSG_USERS, NULL, 0,
+                                         frame, sizeof(frame));
+            if (n < 0) {
+                return -1;
+            }
+            return conn_send_all(conn, frame, n);
         }
         char msg[128];
         snprintf(msg, sizeof(msg), "未知命令: %s（输入 /help 查看帮助）", line);
