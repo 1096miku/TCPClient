@@ -95,6 +95,10 @@ void ui_print_help(void)
     ui_print("  /gleave <群名>       离开群组");
     ui_print("  /gmsg <群名> <消息>  群聊消息");
     ui_print("  /priv <用户> <消息>  发送私聊消息");
+    ui_print("  /sendfile <用户> <文件>  发送文件");
+    ui_print("  /accept <tid>       接受文件");
+    ui_print("  /reject <tid>       拒绝文件");
+    ui_print("  /cancel <tid>       取消传输");
     ui_print("  /users              刷新在线用户列表");
     ui_print("  /login              重新登录（换用户名/密码）");
     ui_print("  /help               显示本帮助");

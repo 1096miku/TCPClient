@@ -145,6 +145,108 @@ static void test_gmsg_group_too_long(void)
           "gmsg 超长群名返回 -1");
 }
 
+/* ---------- 用例 12：sendfile 黄金切分 ---------- */
+static void test_sendfile_basic(void)
+{
+    char target[MAX_USERNAME_LEN];
+    char filename[MAX_FILENAME_LEN];
+    int r = commands_parse_sendfile("/sendfile bob a.txt", target, sizeof(target),
+                                    filename, sizeof(filename));
+    CHECK(r == 0, "sendfile 基本切分成功");
+    CHECK(strcmp(target, "bob") == 0, "目标切出 bob");
+    CHECK(strcmp(filename, "a.txt") == 0, "文件名切出 a.txt");
+}
+
+/* ---------- 用例 13：sendfile 多余空白 ---------- */
+static void test_sendfile_extra_ws(void)
+{
+    char target[MAX_USERNAME_LEN];
+    char filename[MAX_FILENAME_LEN];
+    int r = commands_parse_sendfile("/sendfile   bob   a.txt", target, sizeof(target),
+                                    filename, sizeof(filename));
+    CHECK(r == 0, "sendfile 多余空白仍成功");
+    CHECK(strcmp(target, "bob") == 0, "目标切出 bob（多空白）");
+    CHECK(strcmp(filename, "a.txt") == 0, "文件名跳过前导空白");
+}
+
+/* ---------- 用例 14：sendfile 文件名含空格 ---------- */
+static void test_sendfile_spaces(void)
+{
+    char target[MAX_USERNAME_LEN];
+    char filename[MAX_FILENAME_LEN];
+    int r = commands_parse_sendfile("/sendfile bob my file.txt", target, sizeof(target),
+                                    filename, sizeof(filename));
+    CHECK(r == 0, "sendfile 含空格文件名成功");
+    CHECK(strcmp(filename, "my file.txt") == 0, "文件名内部空格保留");
+}
+
+/* ---------- 用例 15：sendfile 缺参 ---------- */
+static void test_sendfile_missing(void)
+{
+    char target[MAX_USERNAME_LEN];
+    char filename[MAX_FILENAME_LEN];
+    CHECK(commands_parse_sendfile("/sendfile bob", target, sizeof(target),
+                                  filename, sizeof(filename)) == -1,
+          "缺文件名返回 -1");
+    CHECK(commands_parse_sendfile("/sendfile", target, sizeof(target),
+                                  filename, sizeof(filename)) == -1,
+          "缺目标返回 -1");
+    CHECK(commands_parse_sendfile("/sendfile   ", target, sizeof(target),
+                                  filename, sizeof(filename)) == -1,
+          "只有空白返回 -1");
+}
+
+/* ---------- 用例 16：sendfile 目标超长拒绝 ---------- */
+static void test_sendfile_target_too_long(void)
+{
+    char target[MAX_USERNAME_LEN];
+    char filename[MAX_FILENAME_LEN];
+    char t[64];
+    memset(t, 'x', 32);  /* 32 字符超上限（MAX_USERNAME_LEN-1=31） */
+    t[32] = '\0';
+    char input[400];
+    snprintf(input, sizeof(input), "/sendfile %s a.txt", t);
+    CHECK(commands_parse_sendfile(input, target, sizeof(target),
+                                  filename, sizeof(filename)) == -1,
+          "超长目标返回 -1");
+}
+
+/* ---------- 用例 17：sendfile 文件名超长拒绝 ---------- */
+static void test_sendfile_filename_too_long(void)
+{
+    char target[MAX_USERNAME_LEN];
+    char filename[MAX_FILENAME_LEN];
+    char f[300];
+    memset(f, 'f', 256);  /* 256 字符超上限（MAX_FILENAME_LEN-1=255） */
+    f[256] = '\0';
+    char input[400];
+    snprintf(input, sizeof(input), "/sendfile bob %s", f);
+    CHECK(commands_parse_sendfile(input, target, sizeof(target),
+                                  filename, sizeof(filename)) == -1,
+          "超长文件名返回 -1");
+}
+
+/* ---------- 用例 18：tid 参数解析 ---------- */
+static void test_tid_basic(void)
+{
+    uint32_t tid = 0;
+    CHECK(commands_parse_tid_arg("5", &tid) == 0 && tid == 5, "tid '5' → 5");
+    CHECK(commands_parse_tid_arg("  7", &tid) == 0 && tid == 7, "tid 前导空白 → 7");
+    CHECK(commands_parse_tid_arg("0", &tid) == 0 && tid == 0, "tid '0' → 0");
+}
+
+/* ---------- 用例 19：tid 参数非法 ---------- */
+static void test_tid_invalid(void)
+{
+    uint32_t tid = 0;
+    CHECK(commands_parse_tid_arg("", &tid) == -1, "空 tid 返回 -1");
+    CHECK(commands_parse_tid_arg("   ", &tid) == -1, "纯空白 tid 返回 -1");
+    CHECK(commands_parse_tid_arg("abc", &tid) == -1, "字母 tid 返回 -1");
+    CHECK(commands_parse_tid_arg("-1", &tid) == -1, "负号 tid 返回 -1");
+    CHECK(commands_parse_tid_arg("12abc", &tid) == -1, "混合 tid 返回 -1");
+    CHECK(commands_parse_tid_arg("4294967296", &tid) == -1, "超 uint32 tid 返回 -1");
+}
+
 int main(void)
 {
     test_priv_basic();
@@ -158,6 +260,14 @@ int main(void)
     test_gmsg_msg_spaces();
     test_gmsg_missing();
     test_gmsg_group_too_long();
+    test_sendfile_basic();
+    test_sendfile_extra_ws();
+    test_sendfile_spaces();
+    test_sendfile_missing();
+    test_sendfile_target_too_long();
+    test_sendfile_filename_too_long();
+    test_tid_basic();
+    test_tid_invalid();
 
     if (failures > 0) {
         fprintf(stderr, "test_commands: %d 个用例失败\n", failures);

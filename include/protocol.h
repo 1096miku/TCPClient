@@ -79,6 +79,34 @@ int protocol_build_raw(uint8_t msg_type, const uint8_t *data, int data_len,
                        uint8_t *out, int out_cap);
 
 /**
+ * @brief Build a frame with three null-terminated strings as payload
+ *        Payload = part1\0part2\0part3 (each includes trailing NUL)
+ * @note Client-side superset (M4 file transfer INIT frame:
+ *       target\0filename\0size_str), mirroring the server's
+ *       payload_append_field semantics — intentional deviation from the
+ *       server's protocol.c, noted in the commit message.
+ */
+int protocol_build_text3(uint8_t msg_type, const char *part1, const char *part2,
+                         const char *part3, uint8_t *out, int out_cap);
+
+/**
+ * @brief Build a frame whose payload is a 4-byte big-endian transfer id
+ *        (MSG_FILE_ACCEPT / REJECT / COMPLETE / CANCEL)
+ * @note Client-side superset (M4 file transfer control frames);
+ *       deviation note same as protocol_build_text3.
+ */
+int protocol_build_tid(uint8_t msg_type, uint32_t tid,
+                       uint8_t *out, int out_cap);
+
+/**
+ * @brief Build a file chunk frame: payload = tid(4B BE) + offset(8B BE) + data
+ * @note Client-side superset (M4 file transfer MSG_FILE_CHUNK);
+ *       deviation note same as protocol_build_text3.
+ */
+int protocol_build_chunk(uint32_t tid, uint64_t offset, const uint8_t *data,
+                         uint16_t data_len, uint8_t *out, int out_cap);
+
+/**
  * @brief Incrementally parse a byte stream for complete frames
  *
  * This function scans the data buffer for a complete protocol frame.

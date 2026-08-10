@@ -55,6 +55,18 @@ size_t utils_strncpy(char *dst, const char *src, size_t dst_size);
  */
 void utils_trim_newline(char *str);
 
+/**
+ * @brief Parse a decimal digit string range into an unsigned 64-bit value
+ * @param start  Range start (inclusive)
+ * @param end    Range end (exclusive)
+ * @param out    [out] Parsed value
+ * @return 0 success; -1 empty range, non-digit char, or overflow
+ * @note Client-side superset (M4 file transfer reuses it for the tid
+ *       argument, announcement tid, and INIT size) — intentional deviation
+ *       from the server's utils.c, noted in the commit message.
+ */
+int utils_parse_u64_range(const char *start, const char *end, uint64_t *out);
+
 /* ==================== Endianness Helpers ==================== */
 
 static inline uint16_t utils_read_u16_be(const uint8_t *buf)

@@ -11,6 +11,7 @@
 #include <sys/socket.h>
 
 #include "commands.h"
+#include "file.h"
 #include "protocol.h"
 #include "ui.h"
 
@@ -167,11 +168,12 @@ static int login_loop(app_t *app)
 static void app_handle_frame(app_t *app, uint8_t type,
                              const uint8_t *payload, uint16_t plen)
 {
-    (void)app;
     switch (type) {
     case MSG_SERVER_MSG:
-        /* 服务器公告已格式化（[Server] 前缀），原样打印 */
+        /* 服务器公告已格式化（[Server] 前缀），原样打印；
+         * 文件传输公告另驱动状态迁移（公告为主信号，帧为冗余） */
         ui_display_incoming((const char *)payload);
+        file_handle_announcement((const char *)payload);
         break;
     case MSG_CHAT:
         /* 服务器已格式化 "发送者: 消息"——含自己的回显，预期行为 */
@@ -189,14 +191,21 @@ static void app_handle_frame(app_t *app, uint8_t type,
         ui_display_incoming((const char *)payload);
         break;
     case MSG_ERROR:
-        /* 载荷: code(2B 大端)\0message\0 */
+        /* 载荷: code(2B 大端)\0message\0；错误挂钩清理匹配的传输任务 */
         if (plen >= 3) {
-            ui_print_error(utils_read_u16_be(payload),
-                           (const char *)payload + 3);
+            uint16_t code = utils_read_u16_be(payload);
+            ui_print_error(code, (const char *)payload + 3);
+            file_handle_error(code);
         }
         break;
     case MSG_ONLINE_USERS:
         ui_display_online_users(payload, plen);
+        break;
+    case MSG_FILE_ACCEPT:
+    case MSG_FILE_REJECT:
+    case MSG_FILE_CANCEL:
+        /* 发送方视角的控制帧（接收方视角的 INIT/CHUNK/COMPLETE 在票 03） */
+        file_handle_frame(app->conn, type, payload, plen);
         break;
     default:
     {
@@ -346,6 +355,7 @@ app_t *app_connect(const char *host, uint16_t port)
         app_destroy(app);
         return NULL;
     }
+    file_reset_all();  /* 干净起点（防御：文件传输任务不应残留到新会话） */
     return app;
 }
 
@@ -360,7 +370,10 @@ int app_run(app_t *app)
         fds[1].events = POLLIN;
         fds[1].revents = 0;
 
-        int r = poll(fds, 2, APP_POLL_TIMEOUT_MS);
+        /* 文件发送期间缩短 poll 超时，让分片批次推进更平滑（ADR-0002） */
+        int timeout = file_send_active() ? FILE_SEND_POLL_TIMEOUT_MS
+                                         : APP_POLL_TIMEOUT_MS;
+        int r = poll(fds, 2, timeout);
         if (r < 0) {
             if (errno == EINTR) {
                 continue;  /* 信号打断：下一轮循环检查 g_running */
@@ -379,6 +392,12 @@ int app_run(app_t *app)
                 break;
             }
         }
+        /* 最后发送分片：stdin 先处理，保证当轮 /cancel 立即生效不残留 */
+        if (file_send_active()) {
+            if (file_send_tick(app->conn) < 0) {
+                break;  /* 发送失败 = 连接已断 */
+            }
+        }
     }
     return 0;
 }
@@ -388,6 +407,7 @@ void app_destroy(app_t *app)
     if (app == NULL) {
         return;
     }
+    file_reset_all();       /* 关文件句柄、清传输任务（断线取消由服务器公告对端） */
     conn_close(app->conn);  /* 关闭连接 → 服务器广播 "X has left the chat" */
     free(app->rbuf);
     free(app);

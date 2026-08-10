@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "file.h"
 #include "protocol.h"
 #include "ui.h"
 #include "utils.h"
@@ -97,6 +98,61 @@ int commands_parse_priv(const char *line, char *target, size_t target_sz,
         return -1;  /* 缺消息 */
     }
     *msg_out = p;  /* 消息保留内部空格，直接指向行内 */
+    return 0;
+}
+
+int commands_parse_sendfile(const char *line, char *target, size_t target_sz,
+                            char *filename, size_t filename_sz)
+{
+    const char *p = line + strlen("/sendfile");  /* 跳过命令前缀 */
+    while (*p == ' ' || *p == '\t') {
+        p++;
+    }
+    if (*p == '\0') {
+        return -1;  /* 缺目标 */
+    }
+    const char *start = p;
+    while (*p != '\0' && *p != ' ' && *p != '\t') {
+        p++;
+    }
+    size_t tlen = (size_t)(p - start);
+    if (tlen == 0 || tlen >= target_sz) {
+        return -1;  /* 目标为空或超长（需留 NUL 位） */
+    }
+    memcpy(target, start, tlen);
+    target[tlen] = '\0';
+    while (*p == ' ' || *p == '\t') {
+        p++;
+    }
+    if (*p == '\0') {
+        return -1;  /* 缺文件名 */
+    }
+    size_t flen = strlen(p);
+    if (flen >= filename_sz) {
+        return -1;  /* 文件名超长（需留 NUL 位） */
+    }
+    memcpy(filename, p, flen);  /* 文件名内部空格保留 */
+    filename[flen] = '\0';
+    return 0;
+}
+
+int commands_parse_tid_arg(const char *arg, uint32_t *tid_out)
+{
+    const char *p = arg;
+    while (*p == ' ' || *p == '\t') {
+        p++;
+    }
+    if (*p == '\0') {
+        return -1;  /* 空参数 */
+    }
+    uint64_t tid;
+    if (utils_parse_u64_range(p, p + strlen(p), &tid) < 0) {
+        return -1;  /* 拒绝字母/负号/混合/溢出 */
+    }
+    if (tid > UINT32_MAX) {
+        return -1;  /* 超 uint32（服务器 tid 为 4B 大端） */
+    }
+    *tid_out = (uint32_t)tid;
     return 0;
 }
 
@@ -248,6 +304,16 @@ int commands_handle_line(conn_t *conn, const char *line, bool *quit_out)
                 return -1;
             }
             return conn_send_all(conn, frame, n);
+        }
+        if (strncmp(line, "/sendfile", 9) == 0 &&
+            (line[9] == ' ' || line[9] == '\t' || line[9] == '\0')) {
+            /* /sendfile <用户> <文件> → MSG_FILE_INIT（状态机在 file 模块） */
+            return file_cmd_sendfile(conn, line);
+        }
+        if (strncmp(line, "/cancel", 7) == 0 &&
+            (line[7] == ' ' || line[7] == '\t' || line[7] == '\0')) {
+            /* /cancel <tid> → MSG_FILE_CANCEL（接收侧匹配在票 03 扩展） */
+            return file_cmd_cancel(conn, line);
         }
         char msg[128];
         snprintf(msg, sizeof(msg), "未知命令: %s（输入 /help 查看帮助）", line);

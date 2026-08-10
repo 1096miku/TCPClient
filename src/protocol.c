@@ -77,6 +77,91 @@ int protocol_build_text2(uint8_t msg_type, const char *part1, const char *part2,
 }
 
 /**
+ * @brief 构造三文本帧：载荷 = part1\0part2\0part3（三个 NUL 都包含）
+ *
+ * 客户端超集（M4 文件传输 INIT 帧：target\0filename\0size_str），
+ * 镜像服务器 file_transfer.c 的 payload_append_field 语义——
+ * 与服务器 protocol.c 不一致属有意偏离（提交说明注明）。
+ * 写法同 text2：直接手写帧头而非委托 build_frame。
+ */
+int protocol_build_text3(uint8_t msg_type, const char *part1, const char *part2,
+                         const char *part3, uint8_t *out, int out_cap)
+{
+    size_t len1 = strlen(part1);
+    size_t len2 = strlen(part2);
+    size_t len3 = strlen(part3);
+    size_t total = len1 + 1 + len2 + 1 + len3 + 1;  /* part1\0part2\0part3\0 */
+
+    if (total > PROTO_MAX_PAYLOAD) {
+        return -1;
+    }
+    if ((int)total + PROTO_HEADER_SIZE > out_cap) {
+        return -1;
+    }
+
+    /* Frame header */
+    utils_write_u16_be(out, PROTO_MAGIC);
+    out[2] = msg_type;
+    utils_write_u16_be(out + 3, (uint16_t)total);
+
+    /* Payload: three null-terminated strings */
+    uint8_t *payload = out + PROTO_HEADER_SIZE;
+    memcpy(payload, part1, len1 + 1);
+    memcpy(payload + len1 + 1, part2, len2 + 1);
+    memcpy(payload + len1 + 1 + len2 + 1, part3, len3 + 1);
+
+    return (int)(total + PROTO_HEADER_SIZE);
+}
+
+/**
+ * @brief 构造传输标识帧：载荷 = tid(4B 大端)
+ *
+ * 客户端超集（M4 文件传输 MSG_FILE_ACCEPT/REJECT/COMPLETE/CANCEL 控制帧），
+ * 有意偏离说明同 text3。
+ */
+int protocol_build_tid(uint8_t msg_type, uint32_t tid,
+                       uint8_t *out, int out_cap)
+{
+    uint8_t payload[4];
+    utils_write_u32_be(payload, tid);
+    return protocol_build_frame(msg_type, payload, sizeof(payload), out, out_cap);
+}
+
+/**
+ * @brief 构造文件分片帧：载荷 = tid(4B 大端) + offset(8B 大端) + data
+ *
+ * 客户端超集（M4 文件传输 MSG_FILE_CHUNK），有意偏离说明同 text3。
+ * 帧头手写（镜像服务器 file_transfer.c 的 payload 组装方式），
+ * 避免 12+65500 字节的临时载荷缓冲。
+ */
+int protocol_build_chunk(uint32_t tid, uint64_t offset, const uint8_t *data,
+                         uint16_t data_len, uint8_t *out, int out_cap)
+{
+    size_t total = 12 + data_len;  /* tid(4) + offset(8) + data */
+    if (total > PROTO_MAX_PAYLOAD) {
+        return -1;
+    }
+    if ((int)total + PROTO_HEADER_SIZE > out_cap) {
+        return -1;
+    }
+
+    /* Frame header */
+    utils_write_u16_be(out, PROTO_MAGIC);
+    out[2] = MSG_FILE_CHUNK;
+    utils_write_u16_be(out + 3, (uint16_t)total);
+
+    /* Payload: tid + offset + data */
+    uint8_t *payload = out + PROTO_HEADER_SIZE;
+    utils_write_u32_be(payload, tid);
+    utils_write_u64_be(payload + 4, offset);
+    if (data_len > 0 && data != NULL) {
+        memcpy(payload + 12, data, data_len);
+    }
+
+    return (int)(total + PROTO_HEADER_SIZE);
+}
+
+/**
  * @brief 构造错误帧：载荷 = code(2B 大端)\0message\0，类型固定 MSG_ERROR
  */
 int protocol_build_error(uint16_t code, const char *msg,

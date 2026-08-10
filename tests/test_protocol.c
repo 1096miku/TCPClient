@@ -221,6 +221,82 @@ static void test_oversized_payload(void)
     free(text);
 }
 
+/* ---------- 用例 15：黄金字节 text3（INIT 三段载荷） ---------- */
+static void test_golden_text3(void)
+{
+    uint8_t buf[64];
+    static const uint8_t golden[] = {
+        0xCA, 0xFE, 0x09, 0x00, 0x0E,
+        'b', 'o', 'b', 0x00,
+        'a', '.', 't', 'x', 't', 0x00,
+        '1', '0', '0', 0x00
+    };
+    int n = protocol_build_text3(MSG_FILE_INIT, "bob", "a.txt", "100",
+                                 buf, sizeof(buf));
+    CHECK(n == 19, "text3 返回 19 字节");
+    CHECK(memcmp(buf, golden, sizeof(golden)) == 0, "text3 黄金字节一致");
+
+    /* 解析往返：三段 NUL 位置 */
+    uint8_t type;
+    const uint8_t *payload;
+    uint16_t plen;
+    int r = protocol_parse(buf, n, &type, &payload, &plen);
+    CHECK(r == n && type == MSG_FILE_INIT && plen == 14, "text3 parse 往返正确");
+    CHECK(memcmp(payload, "bob\0a.txt\0" "100\0", 14) == 0, "text3 载荷布局正确");
+}
+
+/* ---------- 用例 16：黄金字节 tid 帧（4B 大端） ---------- */
+static void test_golden_tid(void)
+{
+    uint8_t buf[64];
+    static const uint8_t golden[] = {
+        0xCA, 0xFE, 0x0A, 0x00, 0x04, 0x01, 0x02, 0x03, 0x04
+    };
+    int n = protocol_build_tid(MSG_FILE_ACCEPT, 0x01020304, buf, sizeof(buf));
+    CHECK(n == 9, "tid 帧 9 字节");
+    CHECK(memcmp(buf, golden, sizeof(golden)) == 0, "tid 帧黄金字节一致");
+
+    /* 解析往返 */
+    uint8_t type;
+    const uint8_t *payload;
+    uint16_t plen;
+    int r = protocol_parse(buf, n, &type, &payload, &plen);
+    CHECK(r == n && type == MSG_FILE_ACCEPT && plen == 4, "tid 帧 parse 正确");
+    CHECK(utils_read_u32_be(payload) == 0x01020304, "tid 大端正确");
+}
+
+/* ---------- 用例 17：黄金字节 chunk（tid+offset+data） ---------- */
+static void test_golden_chunk(void)
+{
+    uint8_t buf[64];
+    static const uint8_t data[] = {'A', 'B'};
+    static const uint8_t golden[] = {
+        0xCA, 0xFE, 0x0C, 0x00, 0x0E,
+        0x00, 0x00, 0x00, 0x01,                     /* tid=1 */
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  /* offset=0 (8B) */
+        'A', 'B'
+    };
+    int n = protocol_build_chunk(1, 0, data, sizeof(data), buf, sizeof(buf));
+    CHECK(n == 19, "chunk 帧 19 字节");
+    CHECK(memcmp(buf, golden, sizeof(golden)) == 0, "chunk 黄金字节一致");
+
+    /* data_len=0 边界 */
+    uint8_t buf0[64];
+    int n0 = protocol_build_chunk(1, 0, NULL, 0, buf0, sizeof(buf0));
+    CHECK(n0 == 17, "chunk 空数据 17 字节");
+    uint8_t type;
+    const uint8_t *payload;
+    uint16_t plen;
+    int r = protocol_parse(buf0, n0, &type, &payload, &plen);
+    CHECK(r == n0 && plen == 12, "空数据 chunk parse 正确");
+    CHECK(utils_read_u64_be(payload + 4) == 0, "offset 大端正确");
+
+    /* out_cap 不足 */
+    uint8_t small[10];
+    CHECK(protocol_build_chunk(1, 0, data, sizeof(data), small, sizeof(small)) == -1,
+          "chunk out_cap 不足返回 -1");
+}
+
 /* ---------- 用例 14：utils 附测 ---------- */
 static void test_utils_helpers(void)
 {
@@ -239,6 +315,20 @@ static void test_utils_helpers(void)
 
     static const uint8_t be[] = {0xCA, 0xFE};
     CHECK(utils_read_u16_be(be) == 0xCAFE, "read_u16_be 大端正确");
+
+    /* utils_parse_u64_range（M4 超集函数） */
+    uint64_t u = 0;
+    CHECK(utils_parse_u64_range("123", "123" + 3, &u) == 0 && u == 123,
+          "parse_u64_range 基本解析");
+    CHECK(utils_parse_u64_range("12a", "12a" + 3, &u) == -1,
+          "parse_u64_range 非数字拒绝");
+    CHECK(utils_parse_u64_range("", "", &u) == -1, "parse_u64_range 空范围拒绝");
+    CHECK(utils_parse_u64_range("18446744073709551615",
+                                "18446744073709551615" + 20, &u) == 0 &&
+          u == UINT64_MAX, "parse_u64_range 上限可解析");
+    CHECK(utils_parse_u64_range("18446744073709551616",
+                                "18446744073709551616" + 20, &u) == -1,
+          "parse_u64_range 溢出拒绝");
 }
 
 int main(void)
@@ -257,9 +347,12 @@ int main(void)
     test_buffer_too_small();
     test_oversized_payload();
     test_utils_helpers();
+    test_golden_text3();
+    test_golden_tid();
+    test_golden_chunk();
 
     if (failures == 0) {
-        printf("test_protocol: all %d checks passed\n", 14);
+        printf("test_protocol: all %d checks passed\n", 17);
         return EXIT_SUCCESS;
     }
     printf("test_protocol: %d check(s) FAILED\n", failures);

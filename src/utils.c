@@ -45,3 +45,28 @@ void utils_trim_newline(char *str)
         len--;
     }
 }
+
+/**
+ * @brief Parse a decimal digit string range into an unsigned 64-bit value
+ *
+ * 客户端超集（M4 文件传输三处复用：tid 参数/公告 tid/INIT 大小）——
+ * 与服务器 utils.c 不一致属有意偏离（提交说明注明）。
+ */
+int utils_parse_u64_range(const char *start, const char *end, uint64_t *out)
+{
+    if (start == end) {
+        return -1;  /* 空范围 */
+    }
+    uint64_t v = 0;
+    for (const char *p = start; p < end; p++) {
+        if (*p < '0' || *p > '9') {
+            return -1;  /* 非数字（含空白/符号） */
+        }
+        if (v > (UINT64_MAX - (uint64_t)(*p - '0')) / 10) {
+            return -1;  /* 溢出 */
+        }
+        v = v * 10 + (uint64_t)(*p - '0');
+    }
+    *out = v;
+    return 0;
+}

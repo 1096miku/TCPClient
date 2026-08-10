@@ -3,6 +3,7 @@
 
 #include "conn.h"
 #include <stdbool.h>
+#include <stdint.h>
 
 /**
  * @brief 提示输入用户名/密码并发送 MSG_AUTH 帧
@@ -39,6 +40,29 @@ int commands_parse_priv(const char *line, char *target, size_t target_sz,
  */
 int commands_parse_gmsg(const char *line, char *group, size_t group_sz,
                         const char **msg_out);
+
+/**
+ * @brief 切分 /sendfile 命令参数：target 与 filename
+ * @param line        输入行（调用方已确认以 /sendfile 开头）
+ * @param target      [out] 目标用户名（NUL 结尾）
+ * @param target_sz   target 缓冲区大小
+ * @param filename    [out] 本地文件名（跳过目标与中间空白，内部空格保留）
+ * @param filename_sz filename 缓冲区大小
+ * @return 0 成功；-1 格式错误（缺目标/缺文件名/目标或文件名超长）
+ * @note 目标长度上限 target_sz-1、文件名长度上限 filename_sz-1；
+ *       纯函数（无 I/O），独立可测
+ */
+int commands_parse_sendfile(const char *line, char *target, size_t target_sz,
+                            char *filename, size_t filename_sz);
+
+/**
+ * @brief 解析传输标识参数（/accept /reject /cancel 的 <tid>）
+ * @param arg     命令后剩余部分（含可能的前导空白）
+ * @param tid_out [out] 解析出的传输标识（≤ UINT32_MAX）
+ * @return 0 成功；-1 格式错误（空/非全数字/超 UINT32_MAX）
+ * @note 纯函数（无 I/O），独立可测
+ */
+int commands_parse_tid_arg(const char *arg, uint32_t *tid_out);
 
 /**
  * @brief 处理一行用户输入
