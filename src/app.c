@@ -161,8 +161,8 @@ static int login_loop(app_t *app)
 /**
  * @brief 帧分发：按类型路由到对应处理
  *
- * M2-M4 的新帧类型（MSG_PRIV / 群组 / MSG_FILE_* / MSG_USERS）
- * 在此 switch 上扩展。默认分支提示但不终止循环。
+ * M4 的新帧类型（MSG_FILE_* 帧族）在此 switch 上扩展。
+ * 默认分支提示但不终止循环。
  */
 static void app_handle_frame(app_t *app, uint8_t type,
                              const uint8_t *payload, uint16_t plen)
@@ -183,6 +183,11 @@ static void app_handle_frame(app_t *app, uint8_t type,
          * 离线回放 "发送者 (offline): 消息"，全部原样打印 */
         ui_display_incoming((const char *)payload);
         break;
+    case MSG_GMSG:
+        /* 群聊广播 "[群名] 发送者: 消息"（chat.c:92-104）——
+         * 含发送者本人回显，同大厅广播的预期行为，原样打印 */
+        ui_display_incoming((const char *)payload);
+        break;
     case MSG_ERROR:
         /* 载荷: code(2B 大端)\0message\0 */
         if (plen >= 3) {
@@ -195,9 +200,9 @@ static void app_handle_frame(app_t *app, uint8_t type,
         break;
     default:
     {
-        /* M2-M4 扩展点：MSG_PRIV / 群组 / MSG_FILE_* / MSG_USERS */
+        /* M4 扩展点：MSG_FILE_* 帧族 */
         char msg[128];
-        snprintf(msg, sizeof(msg), "收到未处理的消息类型 0x%02X（M2-M4 扩展）", type);
+        snprintf(msg, sizeof(msg), "收到未处理的消息类型 0x%02X（M4 扩展）", type);
         ui_print(msg);
         break;
     }

@@ -90,6 +90,10 @@ void ui_prompt(void)
 void ui_print_help(void)
 {
     ui_print("可用命令:");
+    ui_print("  /gcreate <群名>      创建群组");
+    ui_print("  /gjoin <群名>        加入群组");
+    ui_print("  /gleave <群名>       离开群组");
+    ui_print("  /gmsg <群名> <消息>  群聊消息");
     ui_print("  /priv <用户> <消息>  发送私聊消息");
     ui_print("  /users              刷新在线用户列表");
     ui_print("  /login              重新登录（换用户名/密码）");

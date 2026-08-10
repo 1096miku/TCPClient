@@ -2,7 +2,7 @@
 
 ## 项目概述
 
-学习项目：通过编写聊天服务器（TCPServer，`d:\AAA_Game_XueXiBan\ShareUbuntu\CC\TCPServer`）的配套 C 客户端，学习 C 语言与 Claude Code 开发工作流。当前里程碑 M2：私聊 + 离线消息 + 在线列表命令（M1 编解码 + 连接 + 登录 + 大厅聊天已完成）。规划中：M3 群组；M4 文件传输；M5（可选）ncurses TUI。
+学习项目：通过编写聊天服务器（TCPServer，`d:\AAA_Game_XueXiBan\ShareUbuntu\CC\TCPServer`）的配套 C 客户端，学习 C 语言与 Claude Code 开发工作流。当前里程碑 M3：群组（/gcreate /gjoin /gleave /gmsg 已交付；M1 编解码+连接+登录+大厅聊天、M2 私聊+离线消息+在线列表命令已完成）。规划中：M4 文件传输；M5（可选）ncurses TUI。
 
 ## 技术栈
 
@@ -18,7 +18,7 @@ TCPClient/
 ├── include/            # utils.h(复制) protocol.h(复制) conn.h app.h commands.h ui.h
 ├── src/                # 同名 .c 实现（protocol.c 手写镜像，utils.c 复制）
 ├── tests/test_protocol.c
-├── tools/              # （规划中）e2e 驱动脚本
+├── tools/              # e2e 冒烟脚本（WSL 内运行，日志写 /tmp 不落仓库）
 └── docs/adr/           # 中文 ADR
 ```
 
@@ -34,10 +34,11 @@ TCPClient/
 - [x] M0 仓库骨架（CLAUDE.md / CONTEXT.md / ADR-0001 / CI）
 - [x] M1 编解码 + 连接 + 登录 + 大厅聊天（完成）
 - [x] M2 私聊 + 离线消息 + 在线列表命令（完成：`/priv` `/users`、MSG_PRIV 分发、离线回放）
-- [x] 检查点 A：ctest 全绿（test_protocol 14 用例 + test_commands 6 用例）
-- [x] 检查点 B：M1 冒烟 e2e 通过；M2 冒烟 e2e 通过（在线私聊/回声/错误(200)//users/离线缓存提示/离线回放；Ctrl-C 与交互式提示符待手工三终端验证）
-- 已定决策索引：单线程 poll 见 `docs/adr/0001`；领域术语见 `CONTEXT.md`
-- 待办：git commit（用户触发）；M3 群组（/gcreate /gjoin /gleave + MSG_GMSG 分发，扩展点同 M2：app.c 分发 switch + commands.c 命令分支）
+- [x] M3 群组（完成：`/gcreate` `/gjoin` `/gleave` `/gmsg`、MSG_GMSG 分发、帮助与术语表）
+- [x] 检查点 A：ctest 全绿（test_protocol 14 用例 + test_commands 11 用例）
+- [x] 检查点 B：M1/M2 冒烟 e2e 通过；M3 冒烟 e2e 通过（创建/重名203/加入/重复202/群聊回显/非成员201/群不存在201/离开公告/最后一人删群/缺参提示//help；Ctrl-C 与交互式提示符待手工三终端验证）
+- 已定决策索引：单线程 poll 见 `docs/adr/0001`；领域术语见 `CONTEXT.md`；M3 规格与 5 票见 `docs/specs/`
+- 待办：git commit（用户触发）；M4 文件传输（/sendfile /accept /reject + MSG_FILE_* 帧族，扩展点同 M2/M3：app.c 分发 switch + commands.c 命令分支）
 
 ## 注意事项
 - 构建/测试/运行一律在 WSL（`cd /mnt/d/AAA_Game_XueXiBan/ShareUbuntu/CC/TCPClient`）

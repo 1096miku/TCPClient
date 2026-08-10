@@ -28,13 +28,26 @@ int commands_parse_priv(const char *line, char *target, size_t target_sz,
                         const char **msg_out);
 
 /**
+ * @brief 切分 /gmsg 命令参数：group 与 message（与 parse_priv 同构）
+ * @param line      输入行（调用方已确认以 /gmsg 开头）
+ * @param group     [out] 群组名（NUL 结尾）
+ * @param group_sz  group 缓冲区大小
+ * @param msg_out   [out] 指向消息文本（跳过群名与中间空白，内部空格保留）
+ * @return 0 成功；-1 格式错误（缺群名/缺消息/群名超长）
+ * @note 群名长度上限 group_sz-1（服务器以 ≥MAX_GROUP_NAME_LEN 拒绝）；
+ *       纯函数（无 I/O），独立可测
+ */
+int commands_parse_gmsg(const char *line, char *group, size_t group_sz,
+                        const char **msg_out);
+
+/**
  * @brief 处理一行用户输入
  * @param conn     已建立的连接
  * @param line     去除换行后的输入行（裸文本或 / 命令）
  * @param quit_out [out] 置 true 表示应退出（/quit）
  * @return 0 已处理；-1 致命错误（发送失败，应退出）
- * @note 裸文本 → MSG_CHAT 帧发送；/help /quit /login /priv /users 命令分发；
- *       未知命令给出提示。M3+ 在此扩展 /gcreate /gjoin 等
+ * @note 裸文本 → MSG_CHAT 帧发送；/help /quit /login /priv /users 及
+ *       群组命令分发；未知命令给出提示。M4+ 在此扩展 /sendfile 等
  */
 int commands_handle_line(conn_t *conn, const char *line, bool *quit_out);
 

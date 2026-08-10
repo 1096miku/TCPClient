@@ -82,6 +82,69 @@ static void test_priv_target_too_long(void)
           "超长 target 返回 -1");
 }
 
+/* ---------- 用例 7：gmsg 黄金切分 ---------- */
+static void test_gmsg_basic(void)
+{
+    char group[MAX_GROUP_NAME_LEN];
+    const char *msg = NULL;
+    int r = commands_parse_gmsg("/gmsg 学习小组 今天学什么",
+                                group, sizeof(group), &msg);
+    CHECK(r == 0, "gmsg 基本切分成功");
+    CHECK(strcmp(group, "学习小组") == 0, "群名切出 学习小组");
+    CHECK(msg != NULL && strcmp(msg, "今天学什么") == 0, "消息切出 今天学什么");
+}
+
+/* ---------- 用例 8：gmsg 多余空白 ---------- */
+static void test_gmsg_extra_ws(void)
+{
+    char group[MAX_GROUP_NAME_LEN];
+    const char *msg = NULL;
+    int r = commands_parse_gmsg("/gmsg   学习小组   今天学什么",
+                                group, sizeof(group), &msg);
+    CHECK(r == 0, "gmsg 多余空白仍成功");
+    CHECK(strcmp(group, "学习小组") == 0, "群名切出（多空白）");
+    CHECK(msg != NULL && strcmp(msg, "今天学什么") == 0, "消息跳过前导空白");
+}
+
+/* ---------- 用例 9：gmsg 消息内部空格保留 ---------- */
+static void test_gmsg_msg_spaces(void)
+{
+    char group[MAX_GROUP_NAME_LEN];
+    const char *msg = NULL;
+    int r = commands_parse_gmsg("/gmsg 学习小组 今天 学 什么",
+                                group, sizeof(group), &msg);
+    CHECK(r == 0, "gmsg 内部空格切分成功");
+    CHECK(msg != NULL && strcmp(msg, "今天 学 什么") == 0, "消息内部空格保留");
+}
+
+/* ---------- 用例 10：gmsg 缺参 ---------- */
+static void test_gmsg_missing(void)
+{
+    char group[MAX_GROUP_NAME_LEN];
+    const char *msg = NULL;
+    CHECK(commands_parse_gmsg("/gmsg 学习小组", group, sizeof(group), &msg) == -1,
+          "gmsg 缺消息返回 -1");
+    CHECK(commands_parse_gmsg("/gmsg", group, sizeof(group), &msg) == -1,
+          "gmsg 缺群名返回 -1");
+    CHECK(commands_parse_gmsg("/gmsg   ", group, sizeof(group), &msg) == -1,
+          "gmsg 只有空白返回 -1");
+}
+
+/* ---------- 用例 11：gmsg 群名超长拒绝 ---------- */
+static void test_gmsg_group_too_long(void)
+{
+    char group[MAX_GROUP_NAME_LEN];
+    const char *msg = NULL;
+    char name[64];
+    /* 32 字符群名超上限（MAX_GROUP_NAME_LEN-1=31） */
+    memset(name, 'g', 32);
+    name[32] = '\0';
+    char input[256];
+    snprintf(input, sizeof(input), "/gmsg %s hi", name);
+    CHECK(commands_parse_gmsg(input, group, sizeof(group), &msg) == -1,
+          "gmsg 超长群名返回 -1");
+}
+
 int main(void)
 {
     test_priv_basic();
@@ -90,6 +153,11 @@ int main(void)
     test_priv_missing_msg();
     test_priv_missing_target();
     test_priv_target_too_long();
+    test_gmsg_basic();
+    test_gmsg_extra_ws();
+    test_gmsg_msg_spaces();
+    test_gmsg_missing();
+    test_gmsg_group_too_long();
 
     if (failures > 0) {
         fprintf(stderr, "test_commands: %d 个用例失败\n", failures);

@@ -100,6 +100,69 @@ int commands_parse_priv(const char *line, char *target, size_t target_sz,
     return 0;
 }
 
+int commands_parse_gmsg(const char *line, char *group, size_t group_sz,
+                        const char **msg_out)
+{
+    const char *p = line + strlen("/gmsg");  /* 跳过命令前缀 */
+    while (*p == ' ' || *p == '\t') {
+        p++;
+    }
+    if (*p == '\0') {
+        return -1;  /* 缺群名 */
+    }
+    const char *start = p;
+    while (*p != '\0' && *p != ' ' && *p != '\t') {
+        p++;
+    }
+    size_t glen = (size_t)(p - start);
+    if (glen == 0 || glen >= group_sz) {
+        return -1;  /* 群名为空或超长（需留 NUL 位） */
+    }
+    memcpy(group, start, glen);
+    group[glen] = '\0';
+    while (*p == ' ' || *p == '\t') {
+        p++;
+    }
+    if (*p == '\0') {
+        return -1;  /* 缺消息 */
+    }
+    *msg_out = p;  /* 消息保留内部空格，直接指向行内 */
+    return 0;
+}
+
+/**
+ * @brief 单参命令通用处理：校验并发送单文本载荷帧（/gcreate /gjoin /gleave）
+ * @param conn     已建立的连接
+ * @param msg_type 消息类型（MSG_GCREATE / MSG_GJOIN / MSG_GLEAVE）
+ * @param arg      命令后剩余部分（含可能的前导空白）
+ * @param usage    参数为空时提示的用法文本
+ * @return 0 已处理（含参数错误提示）；-1 发送失败
+ */
+static int cmd_send_single_name(conn_t *conn, uint8_t msg_type,
+                                const char *arg, const char *usage)
+{
+    while (*arg == ' ' || *arg == '\t') {
+        arg++;
+    }
+    if (*arg == '\0') {
+        ui_print(usage);
+        return 0;
+    }
+    if (strlen(arg) >= MAX_GROUP_NAME_LEN) {
+        char msg[64];
+        snprintf(msg, sizeof(msg), "群名过长（上限 %d 字符）",
+                 MAX_GROUP_NAME_LEN - 1);
+        ui_print(msg);
+        return 0;
+    }
+    uint8_t frame[PROTO_HEADER_SIZE + MAX_GROUP_NAME_LEN];
+    int n = protocol_build_text1(msg_type, arg, frame, sizeof(frame));
+    if (n < 0) {
+        return -1;
+    }
+    return conn_send_all(conn, frame, n);
+}
+
 int commands_handle_line(conn_t *conn, const char *line, bool *quit_out)
 {
     *quit_out = false;
@@ -144,6 +207,42 @@ int commands_handle_line(conn_t *conn, const char *line, bool *quit_out)
             /* /users → 零载荷 MSG_USERS 请求，服务器回 MSG_ONLINE_USERS */
             uint8_t frame[PROTO_HEADER_SIZE];
             int n = protocol_build_frame(MSG_USERS, NULL, 0,
+                                         frame, sizeof(frame));
+            if (n < 0) {
+                return -1;
+            }
+            return conn_send_all(conn, frame, n);
+        }
+        if (strncmp(line, "/gcreate", 8) == 0 &&
+            (line[8] == ' ' || line[8] == '\t' || line[8] == '\0')) {
+            /* /gcreate <群名> → MSG_GCREATE 帧（group_name） */
+            return cmd_send_single_name(conn, MSG_GCREATE, line + 8,
+                                        "用法: /gcreate <群名>");
+        }
+        if (strncmp(line, "/gjoin", 6) == 0 &&
+            (line[6] == ' ' || line[6] == '\t' || line[6] == '\0')) {
+            /* /gjoin <群名> → MSG_GJOIN 帧（group_name） */
+            return cmd_send_single_name(conn, MSG_GJOIN, line + 6,
+                                        "用法: /gjoin <群名>");
+        }
+        if (strncmp(line, "/gleave", 7) == 0 &&
+            (line[7] == ' ' || line[7] == '\t' || line[7] == '\0')) {
+            /* /gleave <群名> → MSG_GLEAVE 帧（group_name） */
+            return cmd_send_single_name(conn, MSG_GLEAVE, line + 7,
+                                        "用法: /gleave <群名>");
+        }
+        if (strncmp(line, "/gmsg", 5) == 0 &&
+            (line[5] == ' ' || line[5] == '\t' || line[5] == '\0')) {
+            /* /gmsg <群名> <消息> → MSG_GMSG 帧（group_name\0message） */
+            char group[MAX_GROUP_NAME_LEN];
+            const char *msg = NULL;
+            if (commands_parse_gmsg(line, group, sizeof(group), &msg) < 0) {
+                ui_print("用法: /gmsg <群名> <消息>");
+                return 0;
+            }
+            uint8_t frame[PROTO_HEADER_SIZE + MAX_MESSAGE_LEN +
+                          MAX_GROUP_NAME_LEN + 1];
+            int n = protocol_build_text2(MSG_GMSG, group, msg,
                                          frame, sizeof(frame));
             if (n < 0) {
                 return -1;

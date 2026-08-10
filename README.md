@@ -11,9 +11,10 @@
 - 在线用户列表显示（登录自动 + /users 手动刷新）
 - 私聊（/priv，含发送方回声、错误帧提示）
 - 离线消息（目标离线时缓存，登录后自动回放）
+- 群组（/gcreate 创建 /gjoin 加入 /gleave 离开 /gmsg 群聊）
 - /help /quit /login 命令
 
-**M3+ 规划**：群组（创建/加入/离开/群聊）、文件传输（/sendfile /accept /reject）、（可选）ncurses TUI。
+**M4+ 规划**：文件传输（/sendfile /accept /reject）、（可选）ncurses TUI。
 
 ## 架构概览
 
@@ -68,7 +69,8 @@ ctest --test-dir build-ninja --output-on-failure   # 编解码 + 命令解析单
 include/  头文件（utils.h/protocol.h 与服务器逐字节一致）
 src/      实现（protocol.c 手写镜像；utils.c 复制）
 tests/    ctest 单元测试
-docs/adr/ 架构决策记录（中文）
+tools/    e2e 冒烟脚本（WSL 内运行）
+docs/     ADR 决策记录 + specs/ 里程碑规格与 ticket
 ```
 
 ## 文档
