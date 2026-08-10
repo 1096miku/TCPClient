@@ -347,6 +347,58 @@ static void test_chunk_boundary(void)
           "index 越界 → false");
 }
 
+/* ---------- file_recv_span_check / file_recv_span_mark ----------
+ * 接收分片去重（bitmap 按片号，片号 = offset / FILE_CHUNK_DATA_MAX）：
+ * 服务器多线程转发可能乱序，乱序合法；重复/越界/非对齐视为错误。
+ */
+
+static void test_span_basic(void)
+{
+    uint64_t size = 200000;  /* 4 片：65500+65500+65500+3500，bitmap 1 字节足够 */
+    uint8_t bm[8] = {0};
+    CHECK(file_recv_span_check(size, bm, sizeof(bm), 0, 65500) == 0, "首片合法");
+    CHECK(file_recv_span_mark(bm, sizeof(bm), 0) == 0, "首片记录");
+    CHECK(file_recv_span_check(size, bm, sizeof(bm), 0, 65500) == -1, "重复片 → -1");
+    CHECK(file_recv_span_check(size, bm, sizeof(bm), 65500, 65500) == 0, "乱序片合法");
+    CHECK(file_recv_span_mark(bm, sizeof(bm), 65500) == 0, "乱序片记录");
+    CHECK(file_recv_span_check(size, bm, sizeof(bm), 131000, 3500) == 0, "末片合法");
+    CHECK(file_recv_span_mark(bm, sizeof(bm), 131000) == 0, "末片记录");
+    CHECK(file_recv_span_check(size, bm, sizeof(bm), 131000, 3500) == -1, "末片重复 → -1");
+}
+
+static void test_span_boundary(void)
+{
+    uint64_t size = 65500;  /* 1 片 */
+    uint8_t bm[2] = {0};
+    CHECK(file_recv_span_check(size, bm, sizeof(bm), 0, 65500) == 0, "整片合法");
+    CHECK(file_recv_span_mark(bm, sizeof(bm), 0) == 0, "整片记录");
+    CHECK(file_recv_span_check(size, bm, sizeof(bm), 0, 65501) == -1, "len 越界 → -1");
+    CHECK(file_recv_span_check(size, bm, sizeof(bm), 65500, 0) == -1, "offset>=size → -1");
+    CHECK(file_recv_span_check(size, bm, sizeof(bm), 1, 100) == -1, "非对齐 offset → -1");
+    CHECK(file_recv_span_check(size, bm, sizeof(bm), 0, 0) == -1, "len=0 → -1");
+    CHECK(file_recv_span_check(0, bm, sizeof(bm), 0, 100) == -1, "size=0 → -1");
+}
+
+static void test_span_bitmap_too_small(void)
+{
+    /* 300 片 → 38 字节 bitmap，只给 4 字节：片 200 的 bit 落在 bitmap 之外 */
+    uint64_t size = (uint64_t)65500 * 300;
+    uint8_t bm[4] = {0};
+    CHECK(file_recv_span_check(size, bm, sizeof(bm), 200 * 65500ull, 65500) == -1,
+          "bitmap 长度不足 → -1");
+    CHECK(file_recv_span_mark(bm, sizeof(bm), 200 * 65500ull) == -1, "mark 越界 → -1");
+}
+
+static void test_span_ooo_mutual(void)
+{
+    uint64_t size = 131000;  /* 2 片 */
+    uint8_t bm[1] = {0};
+    CHECK(file_recv_span_mark(bm, sizeof(bm), 65500) == 0, "片1 先记录");
+    CHECK(file_recv_span_check(size, bm, sizeof(bm), 0, 65500) == 0, "片0 乱序仍合法");
+    CHECK(file_recv_span_mark(bm, sizeof(bm), 0) == 0, "片0 记录");
+    CHECK(file_recv_span_check(size, bm, sizeof(bm), 65500, 65500) == -1, "片1 重复 → -1");
+}
+
 /* ---------- file_join_path ---------- */
 
 static void test_join_basic(void)
@@ -395,6 +447,10 @@ int main(void)
     test_chunk_one();
     test_chunk_two();
     test_chunk_boundary();
+    test_span_basic();
+    test_span_boundary();
+    test_span_bitmap_too_small();
+    test_span_ooo_mutual();
     test_join_basic();
     test_join_too_long();
 

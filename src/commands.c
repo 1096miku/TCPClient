@@ -310,9 +310,19 @@ int commands_handle_line(conn_t *conn, const char *line, bool *quit_out)
             /* /sendfile <用户> <文件> → MSG_FILE_INIT（状态机在 file 模块） */
             return file_cmd_sendfile(conn, line);
         }
+        if (strncmp(line, "/accept", 7) == 0 &&
+            (line[7] == ' ' || line[7] == '\t' || line[7] == '\0')) {
+            /* /accept <tid> → MSG_FILE_ACCEPT（接收侧状态机在 file 模块） */
+            return file_cmd_accept(conn, line);
+        }
+        if (strncmp(line, "/reject", 7) == 0 &&
+            (line[7] == ' ' || line[7] == '\t' || line[7] == '\0')) {
+            /* /reject <tid> → MSG_FILE_REJECT（接收侧状态机在 file 模块） */
+            return file_cmd_reject(conn, line);
+        }
         if (strncmp(line, "/cancel", 7) == 0 &&
             (line[7] == ' ' || line[7] == '\t' || line[7] == '\0')) {
-            /* /cancel <tid> → MSG_FILE_CANCEL（接收侧匹配在票 03 扩展） */
+            /* /cancel <tid> → MSG_FILE_CANCEL（发送与接收任务均匹配） */
             return file_cmd_cancel(conn, line);
         }
         char msg[128];

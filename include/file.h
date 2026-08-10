@@ -12,7 +12,10 @@
 /* ==================== 常量 ==================== */
 
 #define FILE_CHUNK_DATA_MAX       65500  /* 单片数据上限（帧长 5+12+65500=65517 ≤ 服务器读缓冲约束） */
-#define FILE_CHUNKS_PER_ROUND     4      /* 每轮最大发送片数（≈256KB ≤ 服务器写缓冲 256KB） */
+#define FILE_CHUNKS_PER_ROUND     2      /* 每轮最大发送片数（≈128KB）——实测修正：
+                                          * 4 片/轮（262KB）贴近服务器写缓冲 256KB 上限，
+                                          * 转发积压时静默丢包（4MB 丢 24 片、16MB 丢 122 片，
+                                          * 2026-08-10 实测）；2 片留足余量 */
 #define FILE_MAX_RECV_PENDING     8      /* 接收 pending 任务上限 */
 #define FILE_PROGRESS_INTERVAL    (1024u * 1024u)  /* 发送进度打印水位（1 MiB） */
 #define FILE_SEND_POLL_TIMEOUT_MS 50     /* 发送期间 poll 超时（毫秒） */
@@ -54,6 +57,23 @@ typedef struct file_send_task {
     file_send_state_t state;
 } file_send_task_t;
 
+/* ==================== 接收任务 ==================== */
+
+typedef struct file_recv_task {
+    bool     busy;
+    bool     inited;                    /* INIT 帧字段（sender/filename/size）已填充 */
+    uint64_t seq;                       /* 公告到达序号（INIT 帧按此 FIFO 关联，见 recv_handle_init） */
+    uint32_t tid;
+    char     sender[MAX_USERNAME_LEN];
+    char     filename[MAX_FILENAME_LEN];
+    char     save_name[MAX_FILENAME_LEN];  /* 唯一化后的保存名（/accept 时确定） */
+    uint64_t size;
+    uint64_t received;                  /* 已成功写入的字节数 */
+    uint8_t *bitmap;                    /* 片号去重位图（/accept 时按 size 分配） */
+    size_t   bitmap_len;
+    FILE    *fp;                        /* 仅活动接收（已 /accept）时非 NULL */
+} file_recv_task_t;
+
 /* ==================== API ==================== */
 
 /**
@@ -63,20 +83,33 @@ typedef struct file_send_task {
 int file_cmd_sendfile(conn_t *conn, const char *line);
 
 /**
- * @brief /cancel 命令入口：取消匹配的传输（发送任务；接收任务见票 03）
+ * @brief /accept 命令入口：接受文件传输并落盘 downloads/
+ * @return 0 已处理（含本地拒绝提示）；-1 发送失败（应退出）
+ */
+int file_cmd_accept(conn_t *conn, const char *line);
+
+/**
+ * @brief /reject 命令入口：拒绝文件传输
+ * @return 0 已处理（含本地提示）；-1 发送失败（应退出）
+ */
+int file_cmd_reject(conn_t *conn, const char *line);
+
+/**
+ * @brief /cancel 命令入口：取消匹配的传输（发送任务与接收任务）
  * @return 0 已处理（含本地提示）；-1 发送失败（应退出）
  */
 int file_cmd_cancel(conn_t *conn, const char *line);
 
 /**
  * @brief 公告事件入口：解析文件传输公告并驱动状态迁移（公告为主信号）
+ * @param conn 连接（pending 满时自动回发拒绝帧需要）
  * @note 由 app 在公告打印之后调用，只做状态迁移不重复显示
  */
-void file_handle_announcement(const char *text);
+void file_handle_announcement(conn_t *conn, const char *text);
 
 /**
  * @brief 帧分发入口：处理文件传输控制帧（帧为冗余信号，与公告幂等）
- * @note 票 02 处理发送方视角（ACCEPT/REJECT/CANCEL）；INIT/CHUNK/COMPLETE 票 03
+ * @note 发送方视角：ACCEPT/REJECT/CANCEL；接收方视角：INIT/CHUNK/COMPLETE/CANCEL
  */
 void file_handle_frame(conn_t *conn, uint8_t type,
                        const uint8_t *payload, uint16_t plen);
@@ -185,5 +218,26 @@ uint64_t file_chunk_count(uint64_t size, uint32_t chunk_size);
  */
 bool file_chunk_plan(uint64_t size, uint32_t chunk_size, uint64_t index,
                      uint64_t *offset_out, uint32_t *len_out);
+
+/**
+ * @brief 接收分片合法性校验：片对齐、不越界、不重复
+ * @param size       文件总大小（INIT 帧/公告解析所得）
+ * @param bitmap     片号去重位图（bit i = 第 i 片已收到），由 /accept 时分配
+ * @param bitmap_len bitmap 字节数
+ * @param offset     分片起始偏移（发送方固定以 FILE_CHUNK_DATA_MAX 对齐）
+ * @param len        分片字节数
+ * @return 0 合法可写盘；-1 越界/重复/非对齐/bitmap 不足
+ * @note 服务器多线程转发可能乱序（spec Further Notes），乱序片合法；
+ *       重复/越界 offset 才是错误（验收清单）。非对齐 offset 只可能
+ *       来自异常发送方，一并判错（对齐假设基于自家发送方的 file_chunk_plan）
+ */
+int file_recv_span_check(uint64_t size, const uint8_t *bitmap, size_t bitmap_len,
+                         uint64_t offset, uint32_t len);
+
+/**
+ * @brief 记录已收到分片（bitmap 置位）
+ * @return 0 成功；-1 非对齐或 bitmap 长度不足
+ */
+int file_recv_span_mark(uint8_t *bitmap, size_t bitmap_len, uint64_t offset);
 
 #endif /* FILE_H */

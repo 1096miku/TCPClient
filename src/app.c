@@ -173,7 +173,7 @@ static void app_handle_frame(app_t *app, uint8_t type,
         /* 服务器公告已格式化（[Server] 前缀），原样打印；
          * 文件传输公告另驱动状态迁移（公告为主信号，帧为冗余） */
         ui_display_incoming((const char *)payload);
-        file_handle_announcement((const char *)payload);
+        file_handle_announcement(app->conn, (const char *)payload);
         break;
     case MSG_CHAT:
         /* 服务器已格式化 "发送者: 消息"——含自己的回显，预期行为 */
@@ -201,17 +201,21 @@ static void app_handle_frame(app_t *app, uint8_t type,
     case MSG_ONLINE_USERS:
         ui_display_online_users(payload, plen);
         break;
+    case MSG_FILE_INIT:
     case MSG_FILE_ACCEPT:
     case MSG_FILE_REJECT:
+    case MSG_FILE_CHUNK:
+    case MSG_FILE_COMPLETE:
     case MSG_FILE_CANCEL:
-        /* 发送方视角的控制帧（接收方视角的 INIT/CHUNK/COMPLETE 在票 03） */
+        /* 文件传输帧族：发送方视角（ACCEPT/REJECT/CANCEL）与
+         * 接收方视角（INIT/CHUNK/COMPLETE/CANCEL）统一进 file 模块 */
         file_handle_frame(app->conn, type, payload, plen);
         break;
     default:
     {
-        /* M4 扩展点：MSG_FILE_* 帧族 */
+        /* 未知类型的防御提示（M5 扩展点） */
         char msg[128];
-        snprintf(msg, sizeof(msg), "收到未处理的消息类型 0x%02X（M4 扩展）", type);
+        snprintf(msg, sizeof(msg), "收到未处理的消息类型 0x%02X", type);
         ui_print(msg);
         break;
     }
@@ -392,8 +396,16 @@ int app_run(app_t *app)
                 break;
             }
         }
-        /* 最后发送分片：stdin 先处理，保证当轮 /cancel 立即生效不残留 */
-        if (file_send_active()) {
+        /* 发送分片：只在 poll 超时轮执行（r==0）。stdin 先处理，
+         * 保证当轮 /cancel 立即生效不残留。
+         *
+         * 节流原理：轮询分片的"每轮 50ms"依赖 poll 超时——但转发数据
+         * 连续到达时（自环传输实测：接收流即自己发送的转发），poll 每轮
+         * 立即返回，循环塌缩成 ~1ms 忙循环，发送速率失控
+         * （4MB 全部片在 47ms 内发出），服务器 worker 转发积压超写缓冲
+         * 上限静默丢包（strace 实测，2026-08-10）。事件轮跳过 tick，
+         * 数据消化完后自然回到超时轮，发送节奏恒定为 2 片/50ms */
+        if (r == 0 && file_send_active()) {
             if (file_send_tick(app->conn) < 0) {
                 break;  /* 发送失败 = 连接已断 */
             }

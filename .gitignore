@@ -11,3 +11,5 @@ build-ninja/
 build-ninja-debug/
 compile_commands.json
 .claude/
+downloads/   # 文件传输接收目录（客户端运行目录下生成，日志/产物走 /tmp 不落仓库）
+*.log        # 客户端/服务器运行日志（调试期在仓库根误生成过）
